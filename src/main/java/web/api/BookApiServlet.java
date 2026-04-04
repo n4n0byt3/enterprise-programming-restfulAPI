@@ -1,49 +1,45 @@
 package web.api;
 
-import dao.BookDAO;
 import model.Book;
-import model.BookList;
-import com.google.gson.Gson;
+import service.BookService;
+import util.FormatHelper;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import javax.xml.bind.JAXBContext;
-import javax.xml.bind.JAXBException;
-import javax.xml.bind.Marshaller;
-import javax.xml.bind.Unmarshaller;
 import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.PrintWriter;
-import java.io.StringReader;
 import java.sql.SQLException;
 import java.util.Collection;
 
 /**
  * RESTful API Servlet for the Book database.
- * Mapped to /Bookapi — handles GET, POST, PUT, DELETE.
+ * Mapped to /Bookapi in web.xml — handles GET, POST, PUT, DELETE.
  *
- * Format selection: client sends ?format=json|xml|text (default: json)
- * Or via Accept header: application/json | application/xml | text/plain
+ * This servlet is responsible for HTTP concerns only:
+ * - Reading request parameters and body
+ * - Setting response status and content type
+ * - Delegating business logic to BookService
+ * - Delegating format conversion to FormatHelper
  *
- * GET    /Bookapi                  -> all books
- * GET    /Bookapi?id=X             -> single book by id
- * GET    /Bookapi?search=term      -> search books
- * POST   /Bookapi                  -> insert new book (body: book data)
- * PUT    /Bookapi                  -> update book (body: book data with id)
- * DELETE /Bookapi?id=X             -> delete book by id
+ * Format selection via ?format=json|xml|text or Accept header (default: json)
+ *
+ * GET    /Bookapi                -> all books
+ * GET    /Bookapi?id=X           -> single book by id
+ * GET    /Bookapi?search=term    -> search books
+ * POST   /Bookapi                -> insert new book
+ * PUT    /Bookapi                -> update existing book (id required in body)
+ * DELETE /Bookapi?id=X           -> delete book by id
  */
 public class BookApiServlet extends HttpServlet {
 
     private static final long serialVersionUID = 1L;
-    private BookDAO bookDAO;
-    private Gson gson;
+    private BookService bookService;
 
     @Override
     public void init() throws ServletException {
-        bookDAO = new BookDAO();
-        gson = new Gson();
+        bookService = new BookService();
     }
 
     // -------------------------------------------------------------------------
@@ -53,36 +49,40 @@ public class BookApiServlet extends HttpServlet {
     protected void doGet(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
 
-        String format = resolveFormat(request);
-        String idParam = request.getParameter("id");
+        String format = FormatHelper.resolveFormat(
+            request.getParameter("format"),
+            request.getHeader("Accept")
+        );
+        String idParam     = request.getParameter("id");
         String searchParam = request.getParameter("search");
 
         try {
             if (idParam != null) {
-                // GET single book by id
                 int id = Integer.parseInt(idParam);
-                Book book = bookDAO.getBookById(id);
+                Book book = bookService.getBookById(id);
                 if (book == null) {
                     sendError(response, HttpServletResponse.SC_NOT_FOUND, "Book not found", format);
                     return;
                 }
-                sendBookResponse(response, book, format);
+                sendResponse(response, HttpServletResponse.SC_OK,
+                    FormatHelper.serialiseBook(book, format), format);
 
             } else if (searchParam != null) {
-                // GET books matching search term
-                Collection<Book> books = bookDAO.searchBooks(searchParam);
-                sendBooksResponse(response, books, format);
+                Collection<Book> books = bookService.searchBooks(searchParam);
+                sendResponse(response, HttpServletResponse.SC_OK,
+                    FormatHelper.serialiseBooks(books, format), format);
 
             } else {
-                // GET all books
-                Collection<Book> books = bookDAO.getAllBooks();
-                sendBooksResponse(response, books, format);
+                Collection<Book> books = bookService.getAllBooks();
+                sendResponse(response, HttpServletResponse.SC_OK,
+                    FormatHelper.serialiseBooks(books, format), format);
             }
 
         } catch (NumberFormatException e) {
             sendError(response, HttpServletResponse.SC_BAD_REQUEST, "Invalid id parameter", format);
         } catch (SQLException e) {
-            sendError(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Database error: " + e.getMessage(), format);
+            sendError(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
+                "Database error: " + e.getMessage(), format);
         }
     }
 
@@ -93,21 +93,26 @@ public class BookApiServlet extends HttpServlet {
     protected void doPost(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
 
-        String format = resolveFormat(request);
+        String format = FormatHelper.resolveFormat(
+            request.getParameter("format"),
+            request.getHeader("Accept")
+        );
         String body = readBody(request);
 
         try {
-            Book book = parseBook(body, format);
-            if (!isValidBook(book)) {
-                sendError(response, HttpServletResponse.SC_BAD_REQUEST, "Missing required fields: title and author are required", format);
-                return;
-            }
-            bookDAO.insertBook(book);
-            response.setStatus(HttpServletResponse.SC_CREATED);
-            sendPlainMessage(response, "Book inserted successfully", format);
+            Book book = FormatHelper.deserialiseBook(body, format);
+            bookService.insertBook(book);
+            sendResponse(response, HttpServletResponse.SC_CREATED,
+                formatMessage("Book inserted successfully", format), format);
 
+        } catch (IllegalArgumentException e) {
+            sendError(response, HttpServletResponse.SC_BAD_REQUEST, e.getMessage(), format);
+        } catch (SQLException e) {
+            sendError(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
+                "Database error: " + e.getMessage(), format);
         } catch (Exception e) {
-            sendError(response, HttpServletResponse.SC_BAD_REQUEST, "Failed to parse request body: " + e.getMessage(), format);
+            sendError(response, HttpServletResponse.SC_BAD_REQUEST,
+                "Failed to parse request body: " + e.getMessage(), format);
         }
     }
 
@@ -118,25 +123,26 @@ public class BookApiServlet extends HttpServlet {
     protected void doPut(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
 
-        String format = resolveFormat(request);
+        String format = FormatHelper.resolveFormat(
+            request.getParameter("format"),
+            request.getHeader("Accept")
+        );
         String body = readBody(request);
 
         try {
-            Book book = parseBook(body, format);
-            if (book.getId() <= 0) {
-                sendError(response, HttpServletResponse.SC_BAD_REQUEST, "Book id is required for update", format);
-                return;
-            }
-            if (!isValidBook(book)) {
-                sendError(response, HttpServletResponse.SC_BAD_REQUEST, "Missing required fields: title and author are required", format);
-                return;
-            }
-            bookDAO.updateBook(book);
-            response.setStatus(HttpServletResponse.SC_OK);
-            sendPlainMessage(response, "Book updated successfully", format);
+            Book book = FormatHelper.deserialiseBook(body, format);
+            bookService.updateBook(book);
+            sendResponse(response, HttpServletResponse.SC_OK,
+                formatMessage("Book updated successfully", format), format);
 
+        } catch (IllegalArgumentException e) {
+            sendError(response, HttpServletResponse.SC_BAD_REQUEST, e.getMessage(), format);
+        } catch (SQLException e) {
+            sendError(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
+                "Database error: " + e.getMessage(), format);
         } catch (Exception e) {
-            sendError(response, HttpServletResponse.SC_BAD_REQUEST, "Failed to parse request body: " + e.getMessage(), format);
+            sendError(response, HttpServletResponse.SC_BAD_REQUEST,
+                "Failed to parse request body: " + e.getMessage(), format);
         }
     }
 
@@ -147,52 +153,50 @@ public class BookApiServlet extends HttpServlet {
     protected void doDelete(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
 
-        String format = resolveFormat(request);
+        String format = FormatHelper.resolveFormat(
+            request.getParameter("format"),
+            request.getHeader("Accept")
+        );
         String idParam = request.getParameter("id");
 
         if (idParam == null) {
-            sendError(response, HttpServletResponse.SC_BAD_REQUEST, "id parameter is required for delete", format);
+            sendError(response, HttpServletResponse.SC_BAD_REQUEST,
+                "id parameter is required for delete", format);
             return;
         }
 
         try {
             int id = Integer.parseInt(idParam);
-            bookDAO.deleteBook(id);
-            response.setStatus(HttpServletResponse.SC_OK);
-            sendPlainMessage(response, "Book deleted successfully", format);
+            bookService.deleteBook(id);
+            sendResponse(response, HttpServletResponse.SC_OK,
+                formatMessage("Book deleted successfully", format), format);
 
         } catch (NumberFormatException e) {
             sendError(response, HttpServletResponse.SC_BAD_REQUEST, "Invalid id parameter", format);
+        } catch (IllegalArgumentException e) {
+            sendError(response, HttpServletResponse.SC_BAD_REQUEST, e.getMessage(), format);
         } catch (SQLException e) {
-            sendError(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Database error: " + e.getMessage(), format);
+            sendError(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
+                "Database error: " + e.getMessage(), format);
         }
     }
 
-    // =========================================================================
-    // Helper methods
-    // =========================================================================
-
-    /**
-     * Resolves the desired response format from:
-     * 1. ?format= query parameter
-     * 2. Accept request header
-     * Defaults to json if neither is set.
-     */
-    private String resolveFormat(HttpServletRequest request) {
-        String formatParam = request.getParameter("format");
-        if (formatParam != null) {
-            return formatParam.toLowerCase().trim();
-        }
-        String accept = request.getHeader("Accept");
-        if (accept != null) {
-            if (accept.contains("application/xml")) return "xml";
-            if (accept.contains("text/plain"))       return "text";
-        }
-        return "json"; // default
+    // -------------------------------------------------------------------------
+    // OPTIONS — CORS preflight
+    // -------------------------------------------------------------------------
+    @Override
+    protected void doOptions(HttpServletRequest request, HttpServletResponse response)
+            throws ServletException, IOException {
+        setCorsHeaders(response);
+        response.setStatus(HttpServletResponse.SC_OK);
     }
 
+    // =========================================================================
+    // Private helpers
+    // =========================================================================
+
     /**
-     * Reads the full request body as a String.
+     * Reads the full HTTP request body as a String.
      */
     private String readBody(HttpServletRequest request) throws IOException {
         StringBuilder sb = new StringBuilder();
@@ -205,150 +209,48 @@ public class BookApiServlet extends HttpServlet {
     }
 
     /**
-     * Parses a Book from the request body based on the resolved format.
+     * Sends a successful response with the correct content type and CORS headers.
      */
-    private Book parseBook(String body, String format) throws JAXBException {
-        if ("xml".equals(format)) {
-            JAXBContext ctx = JAXBContext.newInstance(Book.class);
-            Unmarshaller um = ctx.createUnmarshaller();
-            return (Book) um.unmarshal(new StringReader(body));
-        } else if ("text".equals(format)) {
-            // TEXT format: comma-separated values
-            // Expected: id,title,author,date,genres,characters,synopsis
-            // id can be 0 for new books (POST)
-            String[] parts = body.split(",", 7);
-            Book b = new Book();
-            if (parts.length >= 1) b.setId(Integer.parseInt(parts[0].trim()));
-            if (parts.length >= 2) b.setTitle(parts[1].trim());
-            if (parts.length >= 3) b.setAuthor(parts[2].trim());
-            if (parts.length >= 4) b.setDate(parts[3].trim());
-            if (parts.length >= 5) b.setGenres(parts[4].trim());
-            if (parts.length >= 6) b.setCharacters(parts[5].trim());
-            if (parts.length >= 7) b.setSynopsis(parts[6].trim());
-            return b;
-        } else {
-            // Default: JSON
-            return gson.fromJson(body, Book.class);
-        }
-    }
-
-    /**
-     * Sends a single Book in the requested format.
-     */
-    private void sendBookResponse(HttpServletResponse response, Book book, String format)
-            throws IOException {
+    private void sendResponse(HttpServletResponse response, int status,
+                               String body, String format) throws IOException {
         setCorsHeaders(response);
-        if ("xml".equals(format)) {
-            response.setContentType("application/xml;charset=UTF-8");
-            PrintWriter out = response.getWriter();
-            try {
-                JAXBContext ctx = JAXBContext.newInstance(Book.class);
-                Marshaller m = ctx.createMarshaller();
-                m.setProperty(Marshaller.JAXB_FORMATTED_OUTPUT, Boolean.TRUE);
-                m.marshal(book, out);
-            } catch (JAXBException e) {
-                out.print("<error>XML serialisation failed</error>");
-            }
-        } else if ("text".equals(format)) {
-            response.setContentType("text/plain;charset=UTF-8");
-            response.getWriter().print(book.toString());
-        } else {
-            response.setContentType("application/json;charset=UTF-8");
-            response.getWriter().print(gson.toJson(book));
-        }
-    }
-
-    /**
-     * Sends a collection of Books in the requested format.
-     */
-    private void sendBooksResponse(HttpServletResponse response, Collection<Book> books, String format)
-            throws IOException {
-        setCorsHeaders(response);
-        if ("xml".equals(format)) {
-            response.setContentType("application/xml;charset=UTF-8");
-            PrintWriter out = response.getWriter();
-            try {
-                JAXBContext ctx = JAXBContext.newInstance(BookList.class);
-                Marshaller m = ctx.createMarshaller();
-                m.setProperty(Marshaller.JAXB_FORMATTED_OUTPUT, Boolean.TRUE);
-                m.marshal(new BookList(books), out);
-            } catch (JAXBException e) {
-                out.print("<error>XML serialisation failed</error>");
-            }
-        } else if ("text".equals(format)) {
-            response.setContentType("text/plain;charset=UTF-8");
-            PrintWriter out = response.getWriter();
-            for (Book b : books) {
-                out.println(b.toString());
-            }
-        } else {
-            response.setContentType("application/json;charset=UTF-8");
-            response.getWriter().print(gson.toJson(books));
-        }
-    }
-
-    /**
-     * Sends a plain status message in the requested format.
-     */
-    private void sendPlainMessage(HttpServletResponse response, String message, String format)
-            throws IOException {
-        setCorsHeaders(response);
-        if ("xml".equals(format)) {
-            response.setContentType("application/xml;charset=UTF-8");
-            response.getWriter().print("<message>" + message + "</message>");
-        } else if ("text".equals(format)) {
-            response.setContentType("text/plain;charset=UTF-8");
-            response.getWriter().print(message);
-        } else {
-            response.setContentType("application/json;charset=UTF-8");
-            response.getWriter().print("{\"message\":\"" + message + "\"}");
-        }
+        response.setStatus(status);
+        response.setContentType(FormatHelper.getContentType(format));
+        response.getWriter().print(body);
     }
 
     /**
      * Sends an error response in the requested format.
      */
-    private void sendError(HttpServletResponse response, int status, String message, String format)
-            throws IOException {
-        response.setStatus(status);
+    private void sendError(HttpServletResponse response, int status,
+                            String message, String format) throws IOException {
         setCorsHeaders(response);
+        response.setStatus(status);
+        response.setContentType(FormatHelper.getContentType(format));
         if ("xml".equals(format)) {
-            response.setContentType("application/xml;charset=UTF-8");
             response.getWriter().print("<error>" + message + "</error>");
         } else if ("text".equals(format)) {
-            response.setContentType("text/plain;charset=UTF-8");
             response.getWriter().print("ERROR: " + message);
         } else {
-            response.setContentType("application/json;charset=UTF-8");
             response.getWriter().print("{\"error\":\"" + message + "\"}");
         }
     }
 
     /**
-     * Adds CORS headers to allow the JS frontend to call this API.
+     * Formats a plain status message in the requested format.
+     */
+    private String formatMessage(String message, String format) {
+        if ("xml".equals(format))  return "<message>" + message + "</message>";
+        if ("text".equals(format)) return message;
+        return "{\"message\":\"" + message + "\"}";
+    }
+
+    /**
+     * Adds CORS headers to allow the JS frontend to call this API from the browser.
      */
     private void setCorsHeaders(HttpServletResponse response) {
         response.setHeader("Access-Control-Allow-Origin", "*");
         response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
         response.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept");
-    }
-
-    /**
-     * Handles pre-flight OPTIONS requests from the browser (CORS).
-     */
-    @Override
-    protected void doOptions(HttpServletRequest request, HttpServletResponse response)
-            throws ServletException, IOException {
-        setCorsHeaders(response);
-        response.setStatus(HttpServletResponse.SC_OK);
-    }
-
-    /**
-     * Basic server-side validation — title and author are required.
-     */
-    private boolean isValidBook(Book b) {
-        return b != null
-            && b.getTitle() != null && !b.getTitle().trim().isEmpty()
-            && b.getAuthor() != null && !b.getAuthor().trim().isEmpty();
     }
 }
