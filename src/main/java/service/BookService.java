@@ -3,7 +3,6 @@ package service;
 import dao.BookDAO;
 import model.Book;
 
-import java.sql.SQLException;
 import java.util.Collection;
 import java.util.regex.Pattern;
 
@@ -35,21 +34,21 @@ public class BookService {
     /**
      * Returns all books from the database.
      */
-    public Collection<Book> getAllBooks() throws SQLException {
+    public Collection<Book> getAllBooks() throws Exception {
         return bookDAO.getAllBooks();
     }
 
     /**
      * Returns a single book by ID, or null if not found.
      */
-    public Book getBookById(int id) throws SQLException {
+    public Book getBookById(int id) throws Exception {
         return bookDAO.getBookById(id);
     }
 
     /**
      * Returns all books matching the search term across title, author, genres, date.
      */
-    public Collection<Book> searchBooks(String searchTerm) throws SQLException {
+    public Collection<Book> searchBooks(String searchTerm) throws Exception {
         return bookDAO.searchBooks(searchTerm);
     }
 
@@ -61,9 +60,9 @@ public class BookService {
      * Inserts a new book after validating all fields.
      * @param book the Book to insert
      * @throws IllegalArgumentException if validation fails
-     * @throws SQLException if database operation fails
+     * @throws Exception if database operation fails
      */
-    public void insertBook(Book book) throws IllegalArgumentException, SQLException {
+    public void insertBook(Book book) throws Exception {
         validateBook(book);
         bookDAO.insertBook(book);
     }
@@ -72,9 +71,9 @@ public class BookService {
      * Updates an existing book after validating all fields.
      * @param book the Book to update (must have a valid id)
      * @throws IllegalArgumentException if validation fails
-     * @throws SQLException if database operation fails
+     * @throws Exception if database operation fails
      */
-    public void updateBook(Book book) throws IllegalArgumentException, SQLException {
+    public void updateBook(Book book) throws Exception {
         if (book.getId() <= 0) {
             throw new IllegalArgumentException("Book id is required for update");
         }
@@ -86,9 +85,9 @@ public class BookService {
      * Deletes a book by ID.
      * @param id the primary key of the book to delete
      * @throws IllegalArgumentException if id is invalid
-     * @throws SQLException if database operation fails
+     * @throws Exception if database operation fails
      */
-    public void deleteBook(int id) throws IllegalArgumentException, SQLException {
+    public void deleteBook(int id) throws Exception {
         if (id <= 0) {
             throw new IllegalArgumentException("Invalid book id: " + id);
         }

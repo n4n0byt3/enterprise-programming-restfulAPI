@@ -6,7 +6,6 @@ import util.DBConnection;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collection;
 
@@ -15,16 +14,19 @@ import java.util.Collection;
  * All SQL uses PreparedStatements to prevent SQL injection.
  * Implements full CRUD: getAllBooks, getBookById, searchBooks,
  * insertBook, updateBook, deleteBook.
+ *
+ * All methods declare throws Exception for consistency with the MVC DAO
+ * and to avoid coupling callers to specific SQL exception types.
  */
 public class BookDAO {
 
     /**
-     * Retrieves all books from the database.
+     * Retrieves all books from the database ordered by id.
      * @return Collection of all Book objects
      */
-    public Collection<Book> getAllBooks() throws SQLException {
+    public Collection<Book> getAllBooks() throws Exception {
         Collection<Book> books = new ArrayList<Book>();
-        String sql = "SELECT * FROM books";
+        String sql = "SELECT * FROM books ORDER BY id";
         try (Connection conn = DBConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
@@ -40,7 +42,7 @@ public class BookDAO {
      * @param id the book's primary key
      * @return Book object, or null if not found
      */
-    public Book getBookById(int id) throws SQLException {
+    public Book getBookById(int id) throws Exception {
         String sql = "SELECT * FROM books WHERE id = ?";
         try (Connection conn = DBConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -59,10 +61,14 @@ public class BookDAO {
      * @param searchStr the search term
      * @return Collection of matching Book objects
      */
-    public Collection<Book> searchBooks(String searchStr) throws SQLException {
+    public Collection<Book> searchBooks(String searchStr) throws Exception {
         Collection<Book> books = new ArrayList<Book>();
-        String sql = "SELECT * FROM books WHERE title LIKE ? OR author LIKE ? OR genres LIKE ? OR date LIKE ?";
-        String term = "%" + searchStr + "%";
+        String sql = "SELECT * FROM books WHERE LOWER(title) LIKE ? " +
+                     "OR LOWER(author) LIKE ? " +
+                     "OR LOWER(genres) LIKE ? " +
+                     "OR LOWER(date) LIKE ? " +
+                     "ORDER BY id";
+        String term = "%" + (searchStr == null ? "" : searchStr.trim().toLowerCase()) + "%";
         try (Connection conn = DBConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, term);
@@ -82,8 +88,9 @@ public class BookDAO {
      * Inserts a new book into the database.
      * @param b the Book object to insert
      */
-    public void insertBook(Book b) throws SQLException {
-        String sql = "INSERT INTO books (title, author, date, genres, characters, synopsis) VALUES (?, ?, ?, ?, ?, ?)";
+    public void insertBook(Book b) throws Exception {
+        String sql = "INSERT INTO books (title, author, date, genres, characters, synopsis) " +
+                     "VALUES (?, ?, ?, ?, ?, ?)";
         try (Connection conn = DBConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, b.getTitle());
@@ -100,8 +107,9 @@ public class BookDAO {
      * Updates an existing book record by ID.
      * @param b the Book object with updated fields (must have valid id)
      */
-    public void updateBook(Book b) throws SQLException {
-        String sql = "UPDATE books SET title = ?, author = ?, date = ?, genres = ?, characters = ?, synopsis = ? WHERE id = ?";
+    public void updateBook(Book b) throws Exception {
+        String sql = "UPDATE books SET title = ?, author = ?, date = ?, " +
+                     "genres = ?, characters = ?, synopsis = ? WHERE id = ?";
         try (Connection conn = DBConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, b.getTitle());
@@ -119,7 +127,7 @@ public class BookDAO {
      * Deletes a book from the database by ID.
      * @param id the primary key of the book to delete
      */
-    public void deleteBook(int id) throws SQLException {
+    public void deleteBook(int id) throws Exception {
         String sql = "DELETE FROM books WHERE id = ?";
         try (Connection conn = DBConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -133,7 +141,7 @@ public class BookDAO {
      * @param rs the current ResultSet row
      * @return populated Book object
      */
-    private Book mapRow(ResultSet rs) throws SQLException {
+    private Book mapRow(ResultSet rs) throws Exception {
         return new Book(
             rs.getInt("id"),
             rs.getString("title"),

@@ -10,7 +10,6 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.BufferedReader;
 import java.io.IOException;
-import java.sql.SQLException;
 import java.util.Collection;
 
 /**
@@ -49,7 +48,7 @@ public class BookApiServlet extends HttpServlet {
     protected void doGet(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
 
-        String format = FormatHelper.resolveFormat(
+        String format      = FormatHelper.resolveFormat(
             request.getParameter("format"),
             request.getHeader("Accept")
         );
@@ -80,9 +79,9 @@ public class BookApiServlet extends HttpServlet {
 
         } catch (NumberFormatException e) {
             sendError(response, HttpServletResponse.SC_BAD_REQUEST, "Invalid id parameter", format);
-        } catch (SQLException e) {
+        } catch (Exception e) {
             sendError(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
-                "Database error: " + e.getMessage(), format);
+                "Server error: " + e.getMessage(), format);
         }
     }
 
@@ -107,9 +106,6 @@ public class BookApiServlet extends HttpServlet {
 
         } catch (IllegalArgumentException e) {
             sendError(response, HttpServletResponse.SC_BAD_REQUEST, e.getMessage(), format);
-        } catch (SQLException e) {
-            sendError(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
-                "Database error: " + e.getMessage(), format);
         } catch (Exception e) {
             sendError(response, HttpServletResponse.SC_BAD_REQUEST,
                 "Failed to parse request body: " + e.getMessage(), format);
@@ -137,9 +133,6 @@ public class BookApiServlet extends HttpServlet {
 
         } catch (IllegalArgumentException e) {
             sendError(response, HttpServletResponse.SC_BAD_REQUEST, e.getMessage(), format);
-        } catch (SQLException e) {
-            sendError(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
-                "Database error: " + e.getMessage(), format);
         } catch (Exception e) {
             sendError(response, HttpServletResponse.SC_BAD_REQUEST,
                 "Failed to parse request body: " + e.getMessage(), format);
@@ -175,9 +168,9 @@ public class BookApiServlet extends HttpServlet {
             sendError(response, HttpServletResponse.SC_BAD_REQUEST, "Invalid id parameter", format);
         } catch (IllegalArgumentException e) {
             sendError(response, HttpServletResponse.SC_BAD_REQUEST, e.getMessage(), format);
-        } catch (SQLException e) {
+        } catch (Exception e) {
             sendError(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
-                "Database error: " + e.getMessage(), format);
+                "Server error: " + e.getMessage(), format);
         }
     }
 
