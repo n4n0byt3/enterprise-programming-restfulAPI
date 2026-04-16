@@ -14,15 +14,13 @@ public class Book {
     private int id;
     private String title;
     private String author;
-    private String date;       // Format: MM/DD/YY or MM/DD/YYYY
-    private String genres;     // Comma-separated
-    private String characters; // Comma-separated, optional
-    private String synopsis;   // Optional
+    private String date;
+    private String genres;
+    private String characters;
+    private String synopsis;
 
-    // Default no-arg constructor required by JAXB
     public Book() {}
 
-    // Full constructor
     public Book(int id, String title, String author, String date,
                 String genres, String characters, String synopsis) {
         this.id = id;

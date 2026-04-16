@@ -24,12 +24,12 @@ import java.util.Collection;
  *
  * Format selection via ?format=json|xml|text or Accept header (default: json)
  *
- * GET    /Bookapi                -> all books
- * GET    /Bookapi?id=X           -> single book by id
- * GET    /Bookapi?search=term    -> search books
- * POST   /Bookapi                -> insert new book
- * PUT    /Bookapi                -> update existing book (id required in body)
- * DELETE /Bookapi?id=X           -> delete book by id
+ * GET /Bookapi -> all books
+ * GET /Bookapi?id=X -> single book by id
+ * GET /Bookapi?search=term -> search books
+ * POST /Bookapi -> insert new book
+ * PUT /Bookapi -> update existing book (id required in body)
+ * DELETE /Bookapi?id=X -> delete book by id
  */
 public class BookApiServlet extends HttpServlet {
 

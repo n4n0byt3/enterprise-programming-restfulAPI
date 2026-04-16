@@ -14,7 +14,6 @@ public class BookList {
 
     private Collection<Book> books;
 
-    // Default no-arg constructor required by JAXB
     public BookList() {}
 
     public BookList(Collection<Book> books) {
